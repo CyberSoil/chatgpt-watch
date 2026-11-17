@@ -1,72 +1,45 @@
-# ChatGPT Watch — PWA для iPhone
+# ChatGPT Watch 0.4 — независимый анализ YouTube и субтитров на iPhone
 
-**MVP v0.3.** Личный веб-интерфейс на русском для разбора публичных роликов YouTube. Это отдельное PWA, которое можно поставить на главный экран iPhone, а не встроенный просмотрщик в приложении ChatGPT.
+[Deploy to Render](https://render.com/deploy?repo=https://github.com/CyberSoil/chatgpt-watch)
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/CyberSoil/chatgpt-watch)
+Это отдельное PWA, а не встроенная функция ChatGPT. Уже созданный сервис: https://chatgpt-watch-ctww.onrender.com
 
 ## Возможности
 
-- Вставка ссылки YouTube, выбор краткого или подробного разбора и вопрос к видео.
-- С Gemini API — анализ доступного видеоряда и речи напрямую по ссылке YouTube.
-- Без Gemini API — только получение доступных субтитров. Субтитры **не равнозначны** просмотру кадров или полноценному анализу.
-- Кликабельные временные отметки, копирование текста и сохранение файла TXT.
-- Личный API с Bearer-авторизацией. Ключ Gemini хранится только в серверном окружении, не в браузере.
-- MCP-инструменты start_watch и get_watch_result остаются доступны подходящим клиентам по маршруту /mcp.
+- YouTube URL: сначала youtube-transcript-api, затем yt-dlp пробуют получить субтитры без скачивания видео и аудиодорожки.
+- Ручной ввод: текст стенограммы от 30 до 90 000 символов, либо импорт TXT / SRT / VTT с iPhone (до 100 КБ).
+- При наличии ключей Yandex AI Studio — смысловой пересказ текста на русском; используемые переменные YANDEX_API_KEY, YANDEX_FOLDER_ID и необязательная YANDEX_MODEL (по умолчанию yandexgpt-5.1).
+- Альтернативно поддерживается совместимый Chat Completions API: TEXT_AI_API_KEY, TEXT_AI_MODEL, TEXT_AI_BASE_URL (HTTPS base URL с /v1, без /chat/completions).
+- Gemini — необязательный модуль анализа кадров и аудио публичного видео при разрешённом доступе и наличии GEMINI_API_KEY.
+- Без AI-провайдера программа показывает исходный текст, НЕ выдавая его за содержательный пересказ. Без видео-модели кадры НЕ анализируются.
+- Возможность копировать результат, сохранять TXT и просматривать оригинальные субтитры. Ссылка и таймкоды кликабельны, если присутствуют.
 
-## Установка на Render с iPhone
+## Настройка существующего сервера Render
 
-1. Нажми **Deploy to Render** выше или перейди на страницу: https://render.com/deploy?repo=https://github.com/CyberSoil/chatgpt-watch
-2. Войди в Render и создай сервис из нашего GitHub. Настройки уже находятся в render.yaml.
-3. Render попросит переменные:
-   - MCP_AUTH_TOKEN: придумай и сохрани **длинный случайный секрет минимум 24 символа**. Именно этот секрет затем вводится в поле «Личный доступ» веб-приложения.
-   - GEMINI_API_KEY: получи в Google AI Studio: https://aistudio.google.com/apikey. **Для анализа изображения и речи обязателен.** Если не указать, приложение может вернуть только субтитры. Доступность, квоты и цены зависят от аккаунта и региона.
-4. Нажми Deploy. Когда статус станет Live, открой персональную ссылку Render вида https://имя-сервиса.onrender.com.
-5. На странице Watch введи ссылку YouTube и свой MCP_AUTH_TOKEN (НЕ Gemini-ключ), нажми «Разобрать видео».
-6. Для установки на iPhone открой адрес в Safari → «Поделиться» → «На экран Домой» → «Добавить».
+Открой https://dashboard.render.com/web/srv-dbtupgbm8hqs73dk8org → Environment.
 
-**Не публикуй секреты в GitHub и не отправляй их в чат.** Этот PWA не сохраняет секрет в localStorage или cookies. Данные передаются через HTTPS на тот же сервер.
+1. Смените ранее показанный на скриншоте MCP_AUTH_TOKEN, создайте новый случайный секрет длиннее 24 символов и сохраните его приватно. Он вводится в форму Watch, но не в GitHub.
+2. Для реального AI-пересказа по тексту можно подключить Yandex AI Studio: создайте сервисный API-ключ и найдите ID каталога в Yandex Cloud. Документация: https://aistudio.yandex.ru/ru/docs/ai-studio/operations/generation/create-prompt
+3. Установите YANDEX_API_KEY и YANDEX_FOLDER_ID как приватные переменные окружения сервиса. Опционально YANDEX_MODEL=yandexgpt-5.1. Использование модели может тарифицироваться; проверьте квоты.
+4. Или используйте другого официально доступного текстового провайдера с OpenAI-compatible Chat Completions API через TEXT_AI_API_KEY, TEXT_AI_MODEL, TEXT_AI_BASE_URL.
+5. Выбери Save, rebuild, and deploy. Открой https://chatgpt-watch-ctww.onrender.com в Safari и выбери источник «YouTube» или «Расшифровка/файл».
 
-## Бесплатный Render
+**Никаких ключей и паролей в GitHub, screenshots, чат или browser code.** Gemini не обязателен. PWA не сохраняет секрет в localStorage/cookies, но текст расшифровки отправляется на личный сервер и, при выборе AI, соответствующему провайдеру.
 
-Free Web Service засыпает после 15 минут без запросов; первое открытие после простоя может занимать около минуты. Очередь результатов хранится в памяти сервера, поэтому при перезапуске обработку придётся начать заново. Бесплатный хостинг подходит для личного теста, но не гарантирует постоянной доступности.
+## Источники и честные ограничения
 
-## Локальный запуск
+Обработка по одной ссылке зависит от доступности субтитров YouTube. yt-dlp — запасной парсер, а не гарантированный обход IP-блокировок. Если оба адаптера недоступны, понадобится вручную вставить или загрузить стенограмму. Видео, звук и кадры в ручном режиме не анализируются. Для автоматического распознавания аудио/кадров потребуется дополнительный легальный источник медиа и ASR/Vision-модуль; эта часть пока не реализована. Google Gemini может анализировать кадры, если его API настроен и доступен.
 
-Python 3.12+. Установи requirements.txt в виртуальном окружении и установи переменные окружения MCP_AUTH_TOKEN (не менее 24 символов) и GEMINI_API_KEY (необязательно, но требуется для анализа видеоряда). Запусти команду:
+Длинные видео и ASR пока не гарантированы. На Render Free сервер может засыпать, задания хранятся в памяти одного процесса и удаляются после рестарта; текст живёт в памяти до очистки задания (примерно один час). Максимум четыре параллельные задачи.
 
-    uvicorn watch.server:app --host 127.0.0.1 --port 8000
+## Локальный запуск и тестирование
 
-Открой http://127.0.0.1:8000. Service Worker требует защищённый контекст HTTPS или localhost.
+Нужен Python 3.12+. Установи зависимости: pip install -r requirements.txt
 
-Docker:
+Задай MCP_AUTH_TOKEN (24+ символа), а ключи AI-провайдера — только если они нужны. Запуск: uvicorn watch.server:app --host 127.0.0.1 --port 8000
 
-    docker build -t chatgpt-watch .
-    docker run --rm -p 8000:8000 -e MCP_AUTH_TOKEN=YOUR_RANDOM_LONG_SECRET -e GEMINI_API_KEY=YOUR_KEY chatgpt-watch
+Тесты: pip install pytest httpx && python -m pytest -q
 
-Тесты:
+API: POST /api/watch (url, question, detail); POST /api/transcript (text, question, detail); GET /api/watch/{job_id} (статус и результат); GET /health (публичный статус). Защита: Authorization: Bearer <MCP_AUTH_TOKEN>. MCP инструменты: start_watch, analyze_pasted_transcript, get_watch_result.
 
-    pip install pytest httpx
-    python -m pytest -q
-
-GitHub Actions запускает Python-тесты и проверяет JavaScript на каждый push.
-
-## API
-
-- GET / — оболочка iPhone PWA (публично)
-- GET /health — статус сервера (публично)
-- POST /api/watch — старт анализа, заголовок Authorization: Bearer MCP_AUTH_TOKEN
-- GET /api/watch/{job_id} — получение результата, тот же Bearer-токен
-- /mcp — MCP Streamable HTTP, тот же Bearer-токен
-
-В Render запускается один процесс. Не публикуй endpoint без TLS и авторизации.
-
-## Ограничения
-
-- Не всякий ролик доступен Google Gemini или инструменту субтитров; приватные видео и заблокированные ролики могут не обрабатываться.
-- Gemini может ошибаться при пересказе; проверяй цитаты и таймкоды по оригиналу.
-- Без GEMINI_API_KEY возвращаются только доступные субтитры, не готовый смысловой разбор.
-- Клиент ожидает выполнения на открытой странице; после закрытия PWA мониторинг прекращается.
-- Пользовательский MCP-сервер в ChatGPT Plus может быть недоступен; веб-приложение Watch независимо от этой функции.
-- Видео и запрос передаются Gemini API для анализа; учитывай тарифы и ограничения Google.
-
-Самостоятельная реализация, вдохновлённая https://github.com/bradautomates/claude-video.
+Самостоятельная реализация по мотивам https://github.com/bradautomates/claude-video.
