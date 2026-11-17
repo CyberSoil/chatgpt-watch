@@ -3,6 +3,9 @@
   const el = (id) => document.getElementById(id);
   const form = el("watch-form");
   const url = el("video-url");
+  const sourceType = el("source-type");
+  const transcript = el("transcript-text");
+  const transcriptFile = el("transcript-file");
   const secret = el("access-key");
   const question = el("question");
   const detail = el("detail");
@@ -26,7 +29,7 @@
   function setBusy(value, label = "Получаем доступные материалы видео…") {
     running = value;
     action.disabled = value;
-    el("btn-label").textContent = value ? "Идёт анализ…" : "Разобрать видео";
+    el("btn-label").textContent = value ? "Идёт анализ…" : (sourceType.value === "transcript" ? "Разобрать расшифровку" : "Разобрать видео");
     el("progress-text").textContent = label;
     progress.classList.toggle("is-hidden", !value);
   }
@@ -86,15 +89,25 @@
   function displayResult(job) {
     const result = job.result || {};
     const captionsOnly = result.mode === "captions_only";
+    const captionsAnalyzed = result.mode === "captions_analyzed";
     resultText = captionsOnly ? (result.captions || "") : (result.analysis || "");
-    if (!resultText) throw new Error("В ответе нет текста. Попробуй другое видео.");
-    el("result-badge").textContent = captionsOnly ? "ТОЛЬКО СУБТИТРЫ" : "ВИДЕО + АУДИО";
-    el("result-badge").classList.toggle("captions", captionsOnly);
-    el("result-disclaimer").textContent = captionsOnly
-      ? "Получены только доступные субтитры. Это не полноценный пересказ и кадры не анализировались. Настрой GEMINI_API_KEY для видеоанализа." + (result.truncated ? " Субтитры обрезаны по лимиту." : "")
-      : "Разбор сделан моделью AI. Проверяй важные цитаты и утверждения по оригиналу.";
+    if (!resultText) throw new Error("В ответе нет текста. Попробуй другое видео или вставь расшифровку.");
+    const badge = el("result-badge");
+    badge.textContent = captionsOnly ? "ТЕКСТ / СУБТИТРЫ" : captionsAnalyzed ? "AI ПО ТЕКСТУ" : "ВИДЕО + АУДИО";
+    badge.classList.toggle("captions", captionsOnly);
+    el("result-disclaimer").textContent = (result.verification || "Проверь результат по источнику.")
+      + (result.notice ? " " + result.notice : "")
+      + (result.truncated ? " Часть текста обрезана." : "");
     const source = result.source || "";
     showText(resultText, source);
+    const raw = el("original-transcript");
+    if (captionsAnalyzed && result.captions) {
+      raw.classList.remove("is-hidden");
+      el("raw-transcript").textContent = result.captions;
+    } else {
+      raw.classList.add("is-hidden");
+      el("raw-transcript").textContent = "";
+    }
     const sourceLink = el("source-link");
     sourceLink.hidden = !source.startsWith("https://www.youtube.com/watch?v=");
     if (!sourceLink.hidden) sourceLink.href = source;
@@ -107,7 +120,9 @@
     if (running) return;
     clearNotice();
     panel.classList.add("is-hidden");
-    if (!url.value.trim()) { inform("Вставь ссылку на YouTube."); url.focus(); return; }
+    const manual = sourceType.value === "transcript";
+    if (!manual && !url.value.trim()) { inform("Вставь ссылку на YouTube."); url.focus(); return; }
+    if (manual && transcript.value.trim().length < 30) { inform("Вставь хотя бы 30 символов текста расшифровки."); transcript.focus(); return; }
     if (secret.value.trim().length < 24) {
       inform("Введи секретный ключ из настроек сервера (не короче 24 символов).");
       secret.focus();
@@ -115,14 +130,16 @@
     }
     setBusy(true, "Запускаем анализ…");
     try {
-      const start = await api("/api/watch", {
+      const common = {
+        question: question.value.trim() || "О чём говорится в видео?",
+        detail: detail.value
+      };
+      const start = await api(manual ? "/api/transcript" : "/api/watch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: url.value.trim(),
-          question: question.value.trim() || "О чём говорится в видео?",
-          detail: detail.value
-        })
+        body: JSON.stringify(manual
+          ? { ...common, text: transcript.value.trim() }
+          : { ...common, url: url.value.trim() })
       });
       if (!start.job_id) throw new Error(start.message || "Не получилось создать задачу.");
       let completed = false;
@@ -134,7 +151,7 @@
           break;
         }
         if (data.status === "failed" || data.status === "not_found") {
-          throw new Error(data.message || "Не удалось обработать ролик. Проверь доступность видео, Gemini API и квоты.");
+          throw new Error(data.message || "Не удалось обработать источник. Попробуй вставить расшифровку вручную.");
         }
         if (attempt === 5) el("progress-text").textContent = "Обрабатывается видео. Длинным роликам может потребоваться больше времени…";
         await pause(2500);
@@ -144,6 +161,33 @@
       inform(error.message || "Неизвестная ошибка.");
     } finally {
       setBusy(false);
+    }
+  });
+
+  sourceType.addEventListener("change", () => {
+    const manual = sourceType.value === "transcript";
+    el("youtube-block").classList.toggle("is-hidden", manual);
+    el("transcript-block").classList.toggle("is-hidden", !manual);
+    el("btn-label").textContent = manual ? "Разобрать расшифровку" : "Разобрать видео";
+    panel.classList.add("is-hidden");
+    clearNotice();
+  });
+
+  transcriptFile.addEventListener("change", async () => {
+    const file = transcriptFile.files?.[0];
+    if (!file) return;
+    if (file.size > 100000) { inform("Файл слишком большой, максимум 100 КБ."); transcriptFile.value = ""; return; }
+    if (!/\.(txt|srt|vtt)$/i.test(file.name)) {
+      inform("Выбери файл TXT, SRT или VTT."); transcriptFile.value = ""; return;
+    }
+    try {
+      const text = await file.text();
+      if (text.length > 90000) { inform("Текст длиннее 90 000 символов."); return; }
+      transcript.value = text;
+      clearNotice();
+      inform("Текст из файла загружен. Нажми «Разобрать расшифровку».", true);
+    } catch (_) {
+      inform("Не получилось прочитать выбранный файл.");
     }
   });
 
@@ -195,7 +239,8 @@
     const status = el("server-status");
     status.classList.add("ready");
     status.querySelector("span").textContent = data.backend === "gemini"
-      ? "Видеоанализ доступен" : "Режим субтитров";
+      ? "Видеоанализ доступен" : data.backend === "captions_plus_ai"
+      ? "Субтитры + AI" : "Субтитры / текст";
   }).catch(() => {
     const status = el("server-status");
     status.classList.add("error");
