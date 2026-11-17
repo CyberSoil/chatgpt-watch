@@ -87,3 +87,57 @@ def test_provider_url_rejects_private_hosts():
         else:
             raise AssertionError("Unsafe endpoint accepted: " + bad)
     assert _safe_compatible_endpoint("https://api.example.com/v1") == "https://api.example.com/v1/chat/completions"
+
+
+
+def test_supadata_native_success(monkeypatch):
+    from watch.analyzers import _supadata_watch
+    import httpx
+    monkeypatch.setenv("SUPADATA_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("SUPADATA_MODE", "native")
+    class FakeResponse:
+        status_code = 200
+        content = b'{"content":[]}'
+        def json(self):
+            return {"content":[{"offset": 3000, "duration": 1000, "text":"Привет!"}, {"offset": 62000, "duration": 1800, "text":"Вторая фраза."}]}
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def get(self, url, headers=None, params=None):
+            assert url == "https://api.supadata.ai/v1/transcript"
+            assert params["mode"] == "native"
+            assert params["url"].endswith("CK5sSoZYhJY")
+            return FakeResponse()
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    result = _supadata_watch("CK5sSoZYhJY", "О чём?", "balanced")
+    assert result["engine"] == "supadata"
+    assert "[00:03] Привет!" in result["captions"]
+    assert "[01:02] Вторая фраза." in result["captions"]
+    assert result["mode"] == "captions_only"
+
+
+def test_supadata_falls_back_to_direct_captions(monkeypatch):
+    from watch import analyzers
+    monkeypatch.setenv("SUPADATA_API_KEY", "dummy")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    def fail(*args):
+        raise analyzers.HostedCaptionsError("quota")
+    def direct(*args):
+        return {"mode":"captions_only","captions":"[00:00] Привет"}
+    monkeypatch.setattr(analyzers, "_supadata_watch", fail)
+    monkeypatch.setattr(analyzers, "_caption_watch", direct)
+    result = analyzers.analyze("https://youtu.be/CK5sSoZYhJY", "CK5sSoZYhJY", "Суть?", "balanced")
+    assert result["mode"] == "captions_only"
+    assert result["captions"] == "[00:00] Привет"
+
+
+def test_supadata_error_is_safe():
+    from watch.analyzers import HostedCaptionsError
+    from watch.core import classify_processing_error
+    code, msg = classify_processing_error(HostedCaptionsError("auth"))
+    assert code == "supadata_auth"
+    assert "SUPADATA_API_KEY" in msg

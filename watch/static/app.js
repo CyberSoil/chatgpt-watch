@@ -239,8 +239,9 @@
     const status = el("server-status");
     status.classList.add("ready");
     status.querySelector("span").textContent = data.backend === "gemini"
-      ? "Видеоанализ доступен" : data.backend === "captions_plus_ai"
-      ? "Субтитры + AI" : "Субтитры / текст";
+      ? "Видеоанализ доступен" : data.capabilities?.hosted_captions
+      ? (data.backend === "captions_plus_ai" ? "YouTube API + AI" : "YouTube API подключён")
+      : data.backend === "captions_plus_ai" ? "Субтитры + AI" : "Субтитры / текст";
   }).catch(() => {
     const status = el("server-status");
     status.classList.add("error");

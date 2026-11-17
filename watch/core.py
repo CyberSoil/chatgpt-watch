@@ -70,6 +70,18 @@ def classify_processing_error(exc: Exception) -> tuple[str, str]:
         return youtube_errors[name]
     if name == "CaptionsUnavailable":
         return "captions_unavailable", "Не получилось получить субтитры YouTube с нашего сервера. Переключись на «Вставить текст»: скопируй расшифровку видео или загрузи файл .srt/.vtt/.txt. Для автоматического разбора речи потребуется доступ к видео или сервис распознавания."
+    if name == "HostedCaptionsError":
+        reason = getattr(exc, "reason", "")
+        explanations = {
+            "auth": "Сервис Supadata отклонил API-ключ. Проверь SUPADATA_API_KEY в Render.",
+            "quota": "У Supadata закончились кредиты или достигнут лимит запросов. Проверь баланс и тариф.",
+            "timeout": "Supadata не успел обработать видео. Попробуй более короткий ролик или вставь расшифровку.",
+            "no_captions": "Supadata не нашёл субтитры у этого ролика. Попробуй режим auto/generate в SUPADATA_MODE, учитывая расход кредитов.",
+            "invalid_mode": "В Render для SUPADATA_MODE выбери native, auto или generate.",
+        }
+        return "supadata_" + (reason if reason in explanations else "unavailable"), explanations.get(
+            reason, "Supadata не смог получить субтитры. Проверь ссылку, тариф и настройки провайдера."
+        )
     if name == "AIProviderError":
         return "text_ai_error", "Сервис анализа текста не ответил. Проверь ключ, модель, квоты и настройки текстового AI-провайдера в Render."
     status = getattr(exc, "code", None)

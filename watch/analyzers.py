@@ -117,6 +117,106 @@ def _yt_dlp_watch(video_id: str, question: str, detail: str) -> dict:
     raise CaptionsUnavailable("yt-dlp captions unavailable")
 
 
+
+
+class HostedCaptionsError(RuntimeError):
+    """Safe error identifier for optional hosted caption provider."""
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__("Hosted subtitles unavailable: " + reason)
+
+
+def _supadata_watch(video_id: str, question: str, detail: str) -> dict:
+    """Third-party hosted transcript via official Supadata API, optional and billed by provider.
+
+    No direct YouTube network connection is made from our Render container.
+    """
+    import re
+    import time
+    import httpx
+
+    key = os.getenv("SUPADATA_API_KEY")
+    if not key:
+        raise HostedCaptionsError("not_configured")
+    mode = os.getenv("SUPADATA_MODE", "native").lower().strip()
+    if mode not in ("native", "auto", "generate"):
+        raise HostedCaptionsError("invalid_mode")
+    headers = {"x-api-key": key, "Accept": "application/json"}
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        with httpx.Client(timeout=httpx.Timeout(25.0, connect=10.0),
+                          follow_redirects=False, trust_env=False) as client:
+            resp = client.get("https://api.supadata.ai/v1/transcript",
+                              headers=headers, params={"url": url, "mode": mode})
+            if resp.status_code == 401 or resp.status_code == 403:
+                raise HostedCaptionsError("auth")
+            if resp.status_code == 402 or resp.status_code == 429:
+                raise HostedCaptionsError("quota")
+            if resp.status_code >= 400:
+                raise HostedCaptionsError("unavailable")
+            if len(resp.content) > 2_000_000:
+                raise HostedCaptionsError("too_large")
+            payload = resp.json()
+            if resp.status_code == 202 or (isinstance(payload, dict) and "jobId" in payload):
+                job_id = payload.get("jobId", "")
+                if not isinstance(job_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{8,128}", job_id):
+                    raise HostedCaptionsError("invalid_response")
+                # Fixed upper bound to avoid runaway cloud costs or worker exhaustion.
+                for _ in range(18):
+                    time.sleep(3)
+                    poll = client.get(f"https://api.supadata.ai/v1/transcript/{job_id}", headers=headers)
+                    if poll.status_code in (401, 403):
+                        raise HostedCaptionsError("auth")
+                    if poll.status_code in (402, 429):
+                        raise HostedCaptionsError("quota")
+                    if poll.status_code >= 400 or len(poll.content) > 2_000_000:
+                        raise HostedCaptionsError("unavailable")
+                    payload = poll.json()
+                    if payload.get("status") == "failed":
+                        raise HostedCaptionsError("unavailable")
+                    if payload.get("status") == "completed" or "content" in payload:
+                        break
+                else:
+                    raise HostedCaptionsError("timeout")
+    except httpx.TimeoutException as exc:
+        raise HostedCaptionsError("timeout") from exc
+    except (httpx.RequestError, ValueError, TypeError, KeyError) as exc:
+        raise HostedCaptionsError("unavailable") from exc
+
+    if not isinstance(payload, dict):
+        raise HostedCaptionsError("invalid_response")
+    chunks = payload.get("content")
+    lines = []
+    if isinstance(chunks, list):
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                continue
+            text = chunk.get("text", "")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            offset = chunk.get("offset", 0)
+            if not isinstance(offset, (int, float)) or offset < 0:
+                offset = 0
+            seconds = int(offset / 1000)
+            stamp = f"[{seconds//60:02d}:{seconds%60:02d}]"
+            lines.append(f"{stamp} {text.strip().replace(chr(10), ' ')}")
+        transcript = "\n".join(lines)
+    elif isinstance(chunks, str):
+        transcript = chunks
+    else:
+        raise HostedCaptionsError("invalid_response")
+    transcript = transcript.strip()
+    if not transcript:
+        raise HostedCaptionsError("no_captions")
+    truncated = len(transcript) > 90000
+    transcript = transcript[:90000]
+    return {
+        "mode": "captions_only", "engine": "supadata",
+        "source": url, "captions": transcript, "truncated": truncated,
+        "question": question, "detail": detail,
+        "verification": "Субтитры получены через Supadata. Они могут быть сгенерированы AI; видеокадры Watch не анализировал."
+    }
+
 def _add_text_analysis(caption_result: dict, question: str, detail: str) -> dict:
     """Use a configured text AI or return grounded captions, never invent summaries."""
     captions = caption_result["captions"]
@@ -159,10 +259,20 @@ def analyze(url: str, video_id: str, question: str, detail: str) -> dict:
         except Exception:
             # If Gemini errors, still try available captions instead of aborting.
             pass
+    hosted_error = None
+    # With a hosted key, prefer the supported API over untrusted cloud IP scraping.
+    if os.getenv("SUPADATA_API_KEY"):
+        try:
+            return _add_text_analysis(_supadata_watch(video_id, question, detail),
+                                      question, detail)
+        except HostedCaptionsError as exc:
+            hosted_error = exc
     for adapter in (_caption_watch, _yt_dlp_watch):
         try:
             result = adapter(video_id, question, detail)
             return _add_text_analysis(result, question, detail)
         except Exception:
-            continue  # another source may work; no secrets in user-visible errors
-    raise CaptionsUnavailable("Both YouTube subtitle adapters failed")
+            continue  # alternate sources may work; do not surface raw API errors
+    if hosted_error is not None:
+        raise hosted_error
+    raise CaptionsUnavailable("Both direct subtitle adapters failed")

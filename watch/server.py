@@ -53,6 +53,7 @@ async def health(request) -> Response:
                          "backend": ("gemini" if os.getenv("GEMINI_API_KEY") else
                                      ("captions_plus_ai" if text_provider() != "none" else "captions_only")),
                          "capabilities": {"transcript_input": True, "captions_sources": 2,
+                                          "hosted_captions": bool(os.getenv("SUPADATA_API_KEY")),
                                           "text_ai": text_provider(),
                                           "video_ai": bool(os.getenv("GEMINI_API_KEY"))}})
 

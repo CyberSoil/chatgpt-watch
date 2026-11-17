@@ -43,3 +43,15 @@
 API: POST /api/watch (url, question, detail); POST /api/transcript (text, question, detail); GET /api/watch/{job_id} (статус и результат); GET /health (публичный статус). Защита: Authorization: Bearer <MCP_AUTH_TOKEN>. MCP инструменты: start_watch, analyze_pasted_transcript, get_watch_result.
 
 Самостоятельная реализация по мотивам https://github.com/bradautomates/claude-video.
+
+
+## Дополнительно: получение субтитров через Supadata
+
+Когда Render получает от YouTube ошибку «Sign in to confirm you're not a bot», два прямых адаптера не помогают. Для автоматического режима по ссылке добавлен **необязательный** Supadata API: https://supadata.ai/youtube-transcript-api
+
+1. Зарегистрируйся на https://dash.supadata.ai, получи SUPADATA_API_KEY и проверь условия бесплатных/платных кредитов. Провайдер заявляет бесплатные 100 кредитов/месяц, но условия могут измениться.
+2. Добавь SUPADATA_API_KEY в Render → Environment, не публикуй его ни в чат, ни в GitHub.
+3. SUPADATA_MODE=native (по умолчанию) получает имеющиеся субтитры. SUPADATA_MODE=auto позволяет провайдеру делать AI-транскрипцию, когда готовых субтитров нет. Такой режим может расходовать дополнительные кредиты.
+4. Save, rebuild, and deploy. Watch 0.4 автоматически приоритетно пробует Supadata, затем два встроенных адаптера, а если ничего не удалось — предлагает режим ручной расшифровки.
+
+Важно: Supadata — внешний сервис, получает URL и может обрабатывать аудио. Он использует собственные правила доступа и тарификации; поддержка конкретного ролика не гарантирована. Никакой ключ не хранится в браузерном JavaScript.
