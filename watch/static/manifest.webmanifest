@@ -1,0 +1,20 @@
+{
+  "name": "ChatGPT Watch — анализ YouTube",
+  "short_name": "Watch",
+  "description": "Личный помощник для анализа публичных YouTube-видео.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    }
+  ]
+}
