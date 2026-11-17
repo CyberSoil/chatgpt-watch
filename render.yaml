@@ -7,7 +7,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: MCP_AUTH_TOKEN
-        generateValue: true
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL

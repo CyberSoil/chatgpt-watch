@@ -7,4 +7,4 @@ COPY watch ./watch
 RUN useradd --create-home watch
 USER watch
 EXPOSE 8000
-CMD ["uvicorn", "watch.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["sh", "-c", "exec uvicorn watch.server:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
