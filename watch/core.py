@@ -49,6 +49,7 @@ class Job:
 log = logging.getLogger("watch")
 
 
+
 def classify_processing_error(exc: Exception) -> tuple[str, str]:
     """Return a safe, actionable error code and a message (never echo raw exceptions)."""
     name = type(exc).__name__
@@ -67,6 +68,10 @@ def classify_processing_error(exc: Exception) -> tuple[str, str]:
     }
     if name in youtube_errors:
         return youtube_errors[name]
+    if name == "CaptionsUnavailable":
+        return "captions_unavailable", "Не получилось получить субтитры YouTube с нашего сервера. Переключись на «Вставить текст»: скопируй расшифровку видео или загрузи файл .srt/.vtt/.txt. Для автоматического разбора речи потребуется доступ к видео или сервис распознавания."
+    if name == "AIProviderError":
+        return "text_ai_error", "Сервис анализа текста не ответил. Проверь ключ, модель, квоты и настройки текстового AI-провайдера в Render."
     status = getattr(exc, "code", None)
     if isinstance(status, int):
         if status in (401, 403):
@@ -115,6 +120,32 @@ class WatchQueue:
                 return {"status": "busy", "message": "Сервер занят: повтори попытку позже."}
             job_id = secrets.token_urlsafe(18)
             future = self.executor.submit(self.analyzer, canonical, video_id, question, detail)
+            self.jobs[job_id] = Job(job_id, monotonic(), future, key)
+        return {"job_id": job_id, "status": "processing", "reused": False}
+
+    def start_text(self, transcript: str, question: str = "О чём говорится в видео?", detail: str = "balanced") -> dict:
+        """Analyze transcript supplied by the user without contacting YouTube."""
+        if not isinstance(transcript, str) or not 30 <= len(transcript.strip()) <= 90000:
+            raise ValueError("Введи текст от 30 до 90 000 символов.")
+        if detail not in DETAILS:
+            raise ValueError("detail: brief, balanced или detailed")
+        question = (question or "О чём говорится в видео?").strip()
+        if len(question) > 1500:
+            raise ValueError("Вопрос слишком длинный (максимум 1500 символов).")
+        text = transcript.strip()
+        from .analyzers import analyze_transcript
+        key = sha256(("transcript\\0" + text + "\\0" + question + "\\0" + detail).encode()).hexdigest()
+        with self.lock:
+            self._prune()
+            for job in self.jobs.values():
+                if job.fingerprint == key and (not job.future.done() or job.future.exception() is None):
+                    return {"job_id": job.id,
+                            "status": "completed" if job.future.done() else "processing",
+                            "reused": True}
+            if sum(not j.future.done() for j in self.jobs.values()) >= self.max_jobs:
+                return {"status": "busy", "message": "Сервер занят: повтори попытку позже."}
+            job_id = secrets.token_urlsafe(18)
+            future = self.executor.submit(analyze_transcript, text, question, detail)
             self.jobs[job_id] = Job(job_id, monotonic(), future, key)
         return {"job_id": job_id, "status": "processing", "reused": False}
 
