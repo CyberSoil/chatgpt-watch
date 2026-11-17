@@ -10,6 +10,7 @@ from starlette.routing import Mount, Route
 from starlette.middleware import Middleware
 
 from .analyzers import analyze
+from .providers import text_provider
 from .core import WatchQueue
 from .web import WatchAuthMiddleware, web_routes
 
@@ -30,6 +31,15 @@ def start_watch(url: str, question: str = "О чём говорится в ви�
 
 
 @mcp.tool()
+def analyze_pasted_transcript(transcript: str, question: str = "О чём говорится в видео?", detail: str = "balanced") -> dict:
+    """Analyze a pasted transcript without requesting YouTube. Returns job_id."""
+    try:
+        return queue.start_text(transcript=transcript, question=question, detail=detail)
+    except ValueError as exc:
+        return {"status": "invalid_input", "message": str(exc)}
+
+
+@mcp.tool()
 def get_watch_result(job_id: str, wait_seconds: float = 20) -> dict:
     """Fetch video analysis or captions by job ID, waiting up to 25 seconds."""
     try:
@@ -40,7 +50,11 @@ def get_watch_result(job_id: str, wait_seconds: float = 20) -> dict:
 
 async def health(request) -> Response:
     return JSONResponse({"status": "ok", "service": "chatgpt-watch",
-                         "backend": "gemini" if os.getenv("GEMINI_API_KEY") else "captions_only"})
+                         "backend": ("gemini" if os.getenv("GEMINI_API_KEY") else
+                                     ("captions_plus_ai" if text_provider() != "none" else "captions_only")),
+                         "capabilities": {"transcript_input": True, "captions_sources": 2,
+                                          "text_ai": text_provider(),
+                                          "video_ai": bool(os.getenv("GEMINI_API_KEY"))}})
 
 
 @asynccontextmanager

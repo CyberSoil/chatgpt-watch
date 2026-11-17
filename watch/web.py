@@ -79,6 +79,26 @@ def web_routes(queue):
         return JSONResponse(result, status_code=429 if result.get("status") == "busy" else
                             (202 if result.get("status") == "processing" else 200))
 
+    async def transcript(request: Request):
+        if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
+            return JSONResponse({"message": "Ожидается JSON."}, status_code=415)
+        if int(request.headers.get("content-length", "0") or 0) > 120000:
+            return JSONResponse({"message": "Слишком большой текст."}, status_code=413)
+        raw = await request.body()
+        if len(raw) > 120000:
+            return JSONResponse({"message": "Слишком большой текст."}, status_code=413)
+        try:
+            payload = json.loads(raw)
+            if not isinstance(payload, dict):
+                raise ValueError("Нужен JSON-объект.")
+            result = queue.start_text(transcript=payload.get("text", ""),
+                                      question=payload.get("question", "О чём говорится в видео?"),
+                                      detail=payload.get("detail", "balanced"))
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"status": "invalid_input", "message": str(exc)}, status_code=400)
+        return JSONResponse(result, status_code=429 if result.get("status") == "busy" else
+                            (202 if result.get("status") == "processing" else 200))
+
     async def result(request: Request):
         return JSONResponse(queue.result(request.path_params["job_id"], wait_seconds=0))
 
@@ -91,5 +111,6 @@ def web_routes(queue):
         Route("/icon.svg", asset("icon.svg")),
         Route("/favicon.ico", asset("icon.svg")),
         Route("/api/watch", start, methods=["POST"]),
+        Route("/api/transcript", transcript, methods=["POST"]),
         Route("/api/watch/{job_id}", result, methods=["GET"]),
     ]
