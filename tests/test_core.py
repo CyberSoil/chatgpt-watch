@@ -39,3 +39,40 @@ def test_error_does_not_expose_exception():
     response = q.result(job_id, 2)
     assert response["status"] == "failed"
     assert "secret-key-123" not in str(response)
+
+
+def test_failed_jobs_can_be_retried():
+    calls = {"count": 0}
+    def analyzer(*args):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("transient")
+        return {"ok": True}
+    q = WatchQueue(analyzer)
+    first = q.start("https://youtu.be/CK5sSoZYhJY")
+    assert q.result(first["job_id"], 5)["status"] == "failed"
+    second = q.start("https://youtu.be/CK5sSoZYhJY")
+    assert second["job_id"] != first["job_id"]
+    assert q.result(second["job_id"], 5)["status"] == "completed"
+
+
+def test_user_friendly_error_types():
+    from watch.core import classify_processing_error
+
+    RequestBlocked = type("RequestBlocked", (Exception,), {})
+    error, message = classify_processing_error(RequestBlocked("sensitive data!"))
+    assert error == "youtube_blocked"
+    assert "sensitive data" not in message
+    assert "Gemini" in message
+
+    ApiError = type("ClientError", (Exception,), {})
+    exc = ApiError("secret API key")
+    exc.code = 429
+    error, message = classify_processing_error(exc)
+    assert error == "gemini_quota"
+    assert "secret API key" not in message
+
+    exc.code = 401
+    error, message = classify_processing_error(exc)
+    assert error == "gemini_auth"
+    assert "GEMINI_API_KEY" in message
