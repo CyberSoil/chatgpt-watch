@@ -12,6 +12,11 @@ class FakeQueue:
             raise ValueError("Неправильная ссылка.")
         return {"job_id": "task-123", "status": "processing"}
 
+    def start_text(self, transcript, question, detail):
+        if len(transcript) < 30:
+            raise ValueError("Текст короткий.")
+        return {"job_id": "transcript-456", "status": "processing"}
+
     def result(self, job_id, wait_seconds):
         return {"job_id": job_id, "status": "completed",
                 "result": {"mode": "captions_only", "captions": "[00:01] example"}}
@@ -62,3 +67,17 @@ def test_invalid_json_or_link(monkeypatch):
         assert client.post("/api/watch", headers=headers, data="oops").status_code == 415
         assert client.post("/api/watch", headers=headers, json={"url": "bad"}).status_code == 400
         assert client.post("/api/watch", headers=headers, json=["not", "an", "object"]).status_code == 400
+
+
+
+def test_user_transcript_api(monkeypatch):
+    with make_client(monkeypatch) as client:
+        payload = {"text": "В этом видео рассказывается об особенностях кумыкского языка.",
+                   "detail": "balanced"}
+        assert client.post("/api/transcript", json=payload).status_code == 401
+        headers = {"Authorization": f"Bearer {SECRET}"}
+        result = client.post("/api/transcript", headers=headers, json=payload)
+        assert result.status_code == 202
+        assert result.json()["job_id"] == "transcript-456"
+        assert client.post("/api/transcript", headers=headers,
+                           json={"text":"short"}).status_code == 400
