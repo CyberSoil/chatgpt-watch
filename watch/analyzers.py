@@ -73,7 +73,7 @@ def _parse_vtt(vtt: str) -> str:
     out = []
     last = None
     for block in re.split(r"\n\s*\n", vtt.replace("\r\n", "\n")):
-        match = re.search(r"(?m)^((?:\d\d:)?\d\d:\d\d\.\d{3})\s+-->\s+", block)
+        match = re.search(r"(?m)^((?:\d\d:)?\d\d:\d\d\.\d{3})\s+-->[^\n]*\n", block)
         if not match:
             continue
         t = match.group(1).split(".")[0]
