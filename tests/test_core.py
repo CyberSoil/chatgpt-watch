@@ -63,7 +63,7 @@ def test_user_friendly_error_types():
     error, message = classify_processing_error(RequestBlocked("sensitive data!"))
     assert error == "youtube_blocked"
     assert "sensitive data" not in message
-    assert "Gemini" in message
+    assert "GEMINI_API_KEY" in message
 
     ApiError = type("ClientError", (Exception,), {})
     exc = ApiError("secret API key")
