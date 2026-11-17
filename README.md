@@ -1,4 +1,4 @@
-# ChatGPT Watch 0.4 — независимый анализ YouTube и субтитров на iPhone
+# ChatGPT Watch 0.5 — независимый анализ YouTube и субтитров на iPhone
 
 [Deploy to Render](https://render.com/deploy?repo=https://github.com/CyberSoil/chatgpt-watch)
 

@@ -1,5 +1,5 @@
 "use strict";
-const CACHE_NAME = "watch-pwa-v04";
+const CACHE_NAME = "watch-pwa-v05";
 const PRELOAD = ["/", "/app.css", "/app.js", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {

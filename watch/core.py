@@ -69,7 +69,7 @@ def classify_processing_error(exc: Exception) -> tuple[str, str]:
     if name in youtube_errors:
         return youtube_errors[name]
     if name == "CaptionsUnavailable":
-        return "captions_unavailable", "Не получилось получить субтитры YouTube с нашего сервера. Переключись на «Вставить текст»: скопируй расшифровку видео или загрузи файл .srt/.vtt/.txt. Для автоматического разбора речи потребуется доступ к видео или сервис распознавания."
+        return "captions_unavailable", "YouTube отклонил запрос нашего сервера. Для автоматического получения субтитров можно настроить SUPADATA_API_KEY в Render (отдельный внешний сервис). Либо переключись на «Расшифровка или файл» и загрузи .srt, .vtt или .txt."
     if name == "HostedCaptionsError":
         reason = getattr(exc, "reason", "")
         explanations = {
